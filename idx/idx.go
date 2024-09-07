@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -19,14 +20,6 @@ type IdxEntry struct {
 	Timestamp string `json:"Timestamp"`
 }
 
-// Creates two leveldb db's
-// 1 - .go-index/search
-//
-//	suffixMap = [searchTerm] = matchingPath + ~ + matchingPath + ~ + ...matchingPath
-//
-// 2 - .go-index/store
-//
-//	simpleMap = [path] = path
 func SaveIndexToDB() {
 	fmt.Printf("\r Opening dbs...")
 	db, err := leveldb.OpenFile(".go-index/search", nil)
@@ -41,6 +34,13 @@ func SaveIndexToDB() {
 	}
 	defer db2.Close()
 
+	db3, err := leveldb.OpenFile(".go-index/versions", nil)
+	if err != nil {
+		panic(err)
+	}
+	defer db3.Close()
+
+	// Check last write time
 	var lastTime string
 	val, err := db2.Get([]byte("writetime"), nil)
 	if errors.Is(err, leveldb.ErrNotFound) {
@@ -118,9 +118,18 @@ func SaveIndexToDB() {
 			ie := &IdxEntry{}
 			json.Unmarshal([]byte(entry), ie)
 
+			// Add each index to the global store
 			_, err := db.Get([]byte(ie.Path), nil)
 			if errors.Is(err, leveldb.ErrNotFound) {
 				db.Put([]byte(ie.Path), []byte(ie.Path), nil)
+			}
+
+			// Add each indexs version to its version path
+			existingVersions, err := db3.Get([]byte(ie.Path), nil)
+			if errors.Is(err, leveldb.ErrNotFound) {
+				db.Put([]byte(ie.Path), []byte(ie.Timestamp+"|"+ie.Version), nil)
+			} else {
+				db.Put([]byte(ie.Path), []byte(string(existingVersions)+"~"+ie.Timestamp+"|"+ie.Version), nil)
 			}
 
 			prefix := ""
@@ -149,10 +158,7 @@ func SaveIndexToDB() {
 	}
 
 	fmt.Println("Updated last write time")
+	os.Exit(0)
 	wg.Wait()
 	close(sem)
-}
-
-func WriteDBToS3() {
-	// TODO: Turn into something and write to db
 }
