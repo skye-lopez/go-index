@@ -19,6 +19,14 @@ type IdxEntry struct {
 	Timestamp string `json:"Timestamp"`
 }
 
+// Creates two leveldb db's
+// 1 - .go-index/search
+//
+//	suffixMap = [searchTerm] = matchingPath + ~ + matchingPath + ~ + ...matchingPath
+//
+// 2 - .go-index/store
+//
+//	simpleMap = [path] = path
 func SaveIndexToDB() {
 	fmt.Printf("\r Opening dbs...")
 	db, err := leveldb.OpenFile(".go-index/search", nil)
@@ -143,4 +151,8 @@ func SaveIndexToDB() {
 	fmt.Println("Updated last write time")
 	wg.Wait()
 	close(sem)
+}
+
+func WriteDBToS3() {
+	// TODO: Turn into something and write to db
 }
