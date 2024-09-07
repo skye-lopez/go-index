@@ -18,6 +18,10 @@ A prefix map to provide the ability of fast searching.
 ```
 []byte{Prefix}=>[]byte{DeliminitedPackages}
 
-Value string struct:
+Value structure:
 {PackagePath}~{PackagePath}~{PackagePath} ... 
+
+Example:
+
+allPaths := strings.Split(value, "~")
 
