@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -20,21 +20,143 @@ type IdxEntry struct {
 	Timestamp string `json:"Timestamp"`
 }
 
+// TODO: Make this non-sync again.
+func Fetch() {
+	// Load log db
+	db, err := leveldb.OpenFile(".go-index-log", nil)
+	if err != nil {
+		log.Fatalf("Error opening .go-index-log : \n %e", err)
+	}
+	defer db.Close()
+
+	// Attain last write time or set it to default
+	var lastTime string
+	lastStoredTime, err := db.Get([]byte("write-time"), nil)
+	if errors.Is(err, leveldb.ErrNotFound) {
+		// lastTime = "2019-04-10T19:08:52.997264Z"
+		tempStep := time.Duration(120) * time.Hour
+		tempLT := time.Now().Add(-tempStep)
+		lastTime = tempLT.Format(time.RFC3339Nano)
+
+	} else if err == nil {
+		lastTime = string(lastStoredTime)
+	} else {
+		log.Fatalf("Error preforming get write-time on .go-index-log : \n %e", err)
+	}
+
+	// Get all of the URLS back to lastTime to be queried and indexed.
+	baseUrl := "https://index.golang.org/index?since="
+	startTime := time.Now()
+	endTime, err := time.Parse(time.RFC3339Nano, lastTime)
+	step := time.Duration(12) * time.Hour
+
+	urls := []string{}
+	for startTime.Unix() > endTime.Unix() {
+		urls = append(urls, baseUrl+startTime.Format(time.RFC3339Nano))
+		startTime = startTime.Add(-step)
+	}
+
+	var wg sync.WaitGroup
+	maxWorkers := 10
+	sem := make(chan int, maxWorkers)
+
+	maxEntries := len(urls) * 2000
+	entries := make(chan string, maxEntries)
+
+	fmt.Println("Starting url iter")
+	for i, url := range urls {
+		fmt.Printf("\r Parsing url: %d/%d", i, len(url))
+		sem <- 1
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			resp, err := http.Get(url)
+			if err != nil {
+				<-sem
+				panic(err)
+			}
+			defer resp.Body.Close()
+
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				<-sem
+				panic(err)
+			}
+
+			lines := strings.Split(string(body), "\n")
+			for _, e := range lines {
+				ie := &IdxEntry{}
+				json.Unmarshal([]byte(e), ie)
+				entries <- ie.Path
+			}
+			<-sem
+		}()
+	}
+
+	wg.Wait()
+	close(sem)
+	close(entries)
+
+	var wg2 sync.WaitGroup
+	sem2 := make(chan int, maxWorkers)
+
+	cache := make(map[string]bool, 0)
+	searchDB, err := leveldb.OpenFile(".go-index-search", nil)
+	if err != nil {
+		log.Fatalf("Error opening .go-index-search \n %e", err)
+	}
+	defer searchDB.Close()
+
+	for e := range entries {
+		fmt.Printf("\r Storing entry to DB, %d left", len(entries))
+		sem2 <- 1
+		wg2.Add(1)
+		go func() {
+			defer wg2.Done()
+
+			// Skip entries we have already checked.
+			// this is much faster than checking leveldb every time.
+			_, cached := cache[e]
+			if cached {
+				<-sem
+				return
+			}
+
+			// Update searchDB
+			prefix := ""
+			for _, c := range e {
+				prefix += string(c)
+				existing, err := searchDB.Get([]byte(prefix), nil)
+				if errors.Is(err, leveldb.ErrNotFound) {
+					_ = searchDB.Put([]byte(prefix), []byte(e), nil)
+				} else {
+					packet := []byte(string(existing) + "~" + e)
+					_ = searchDB.Put([]byte(prefix), packet, nil)
+				}
+			}
+			<-sem2
+		}()
+	}
+
+	wg2.Wait()
+	close(sem2)
+}
+
 func SaveIndexToDB() {
 	fmt.Printf("\r Opening dbs...")
-	db, err := leveldb.OpenFile(".go-index/search", nil)
+	db, err := leveldb.OpenFile(".go-index-search", nil)
 	if err != nil {
 		panic(err)
 	}
 	defer db.Close()
 
-	db2, err := leveldb.OpenFile(".go-index/store", nil)
+	db2, err := leveldb.OpenFile(".go-index-store", nil)
 	if err != nil {
 		panic(err)
 	}
 	defer db2.Close()
 
-	db3, err := leveldb.OpenFile(".go-index/versions", nil)
+	db3, err := leveldb.OpenFile(".go-index-version", nil)
 	if err != nil {
 		panic(err)
 	}
@@ -81,6 +203,7 @@ func SaveIndexToDB() {
 			resp, err := http.Get(url)
 			if err != nil {
 				// TODO: Something awesome here
+				panic(err)
 				<-sem
 				return
 			}
@@ -89,6 +212,7 @@ func SaveIndexToDB() {
 			body, err := io.ReadAll(resp.Body)
 			if err != nil {
 				// TODO: Something awesome here
+				panic(err)
 				<-sem
 				return
 			}
@@ -111,7 +235,7 @@ func SaveIndexToDB() {
 
 	sem = make(chan int, maxWorkers)
 	for entry := range entries {
-		fmt.Printf("\r Processing entries: %d left                                                                                      ", len(entries))
+		fmt.Printf("\r Processing entries  %d Leftttt                                                                                     ", len(entries))
 		sem <- 1
 		wg.Add(1)
 		go func() {
@@ -129,7 +253,24 @@ func SaveIndexToDB() {
 			if errors.Is(err, leveldb.ErrNotFound) {
 				db.Put([]byte(ie.Path), []byte(ie.Timestamp+"|"+ie.Version), nil)
 			} else {
-				db.Put([]byte(ie.Path), []byte(string(existingVersions)+"~"+ie.Timestamp+"|"+ie.Version), nil)
+				versionTouples := strings.Split(string(existingVersions), "~")
+
+				track := make(map[string]bool, 0)
+				versionResult := ""
+				for _, v := range versionTouples {
+					splitTouple := strings.Split(v, "|")
+					_, exists := track[splitTouple[1]]
+					if !exists {
+						track[splitTouple[1]] = true
+						if len(versionResult) < 2 {
+							versionResult += v
+						} else {
+							versionResult += "~" + v
+						}
+					}
+				}
+				fmt.Printf("\n\r test: %s", versionResult)
+				db.Put([]byte(ie.Path), []byte(versionResult+"~"+ie.Timestamp+"|"+ie.Version), nil)
 			}
 
 			prefix := ""
@@ -149,8 +290,6 @@ func SaveIndexToDB() {
 		}()
 	}
 
-	fmt.Println("Done")
-
 	// Update writetime
 	err = db.Put([]byte("writetime"), []byte(startTime.Format(time.RFC3339Nano)), nil)
 	if err != nil {
@@ -158,7 +297,6 @@ func SaveIndexToDB() {
 	}
 
 	fmt.Println("Updated last write time")
-	os.Exit(0)
 	wg.Wait()
 	close(sem)
 }

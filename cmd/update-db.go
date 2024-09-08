@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"os"
-
 	"github.com/skye-lopez/go-index/idx"
 	"github.com/spf13/cobra"
 )
@@ -20,5 +18,4 @@ func init() {
 
 func updateDB(cmd *cobra.Command, args []string) {
 	idx.SaveIndexToDB()
-	os.Exit(0)
 }

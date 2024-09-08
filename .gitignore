@@ -1,2 +1,4 @@
-.go-index/
+.go-index-store
+.go-index-search
+.go-index-version
 
