@@ -7,6 +7,17 @@ TODO: A lot. This is very much under development.
 
 ### `search`
 
+##### How pagination works:
+
+Pages are determined using a straightforward `offset = page*limit`. This means if you wanted to get 100 results in 2 pages you would perform the following queries:
+
+```
+GET search/by-path?search=github.com&limit=50
+=> Results 0-50
+GET search/by-path?search=github.com&limit=50&page=1
+=> Results 50-100
+```
+
 #### `search/by-path`
 Search all package urls by a given search string. This endpoint is paginated.
 
@@ -52,13 +63,30 @@ GET search/by-path/search=git&suffix=true
 }
 ```
 
-##### How pagination works:
+#### `search/by-owner`
+Search all packages that belong to an `owner`. An owner is only stored if the package is from `github` or `gitlab.` For example, `github.com/google` would have the owner of `google`.
 
-Pages are determined using a straightforward `offset = page*limit`. This means if you wanted to get 100 results in 2 pages you would perform the following queries:
+##### Arguments:
 
+`search/by-owner?search=<STRING>&page=<INT>&limit=<INT>`
+
+| query_param | required | default | type | limitations| description |
+|-------------|----------|---------|------|-------|------------|
+| `owner`    | **yes**  |        | string  |          | The owner to search for.  |
+| `page`    | **no**  | 0       | int |    | The page to start on. **ZERO-INDEXED**|
+| `limit`    | **no**  | 100     | int |  | Limits the amount of urls returned per page |
+
+##### Response on success:
 ```
-GET search/by-path?search=github.com&limit=50
-=> Results 0-50
-GET search/by-path?search=github.com&limit=50&page=1
-=> Results 50-100
+{
+    entries: []string
+    nextPage: int
+}
+```
+
+##### Response on error:
+```
+{
+    message: string
+}
 ```

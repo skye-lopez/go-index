@@ -75,6 +75,42 @@ func Open() {
 		})
 	})
 
+	r.GET("/search/by-owner", func(c *gin.Context) {
+		owner := c.DefaultQuery("owner", "")
+		page := c.DefaultQuery("page", "0")
+		limit := c.DefaultQuery("limit", "100")
+
+		pageInt, err := strconv.Atoi(page)
+		if err != nil {
+			errMessage := fmt.Sprintf("Error converting %s to an int. Please ensure the page= param is a valid int.", page)
+			c.JSON(400, gin.H{"message": errMessage})
+			return
+		}
+
+		limitInt, err := strconv.Atoi(limit)
+		if err != nil {
+			errMessage := fmt.Sprintf("Error converting %s to an int. Please ensure the limit= param is a valid int.", limit)
+			c.JSON(400, gin.H{"message": errMessage})
+			return
+		}
+
+		if owner == "" {
+			c.JSON(400, gin.H{"message": "No owner= string provided. this field is required."})
+			return
+		}
+
+		packages, err := _api.SearchByOwner(owner, pageInt, limitInt)
+		if err != nil {
+			c.JSON(500, gin.H{"message": "internal error querying data."})
+			return
+		}
+
+		c.JSON(200, gin.H{
+			"packages": packages,
+			"nextPage": pageInt + 1,
+		})
+	})
+
 	r.Run()
 }
 
@@ -88,14 +124,39 @@ func (a *API) InclusiveSearch(search string, page int, limit int, suffix string)
 	} else {
 		s = "%" + search + "%"
 	}
+
 	packages, err := a.Db.GQ.QueryString(query,
 		s,
 		limit,
 		offset,
 	)
+	if err != nil {
+		return []string{}, err
+	}
+
 	res := []string{}
 	for _, r := range packages {
 		res = append(res, r.([]interface{})[0].(string))
 	}
-	return res, err
+	return res, nil
+}
+
+func (a *API) SearchByOwner(owner string, page int, limit int) ([]string, error) {
+	query := `SELECT url FROM packages WHERE owner = $1 LIMIT $2 OFFSET $3`
+
+	offset := page * limit
+	packages, err := a.Db.GQ.QueryString(query,
+		owner,
+		limit,
+		offset,
+	)
+	if err != nil {
+		return []string{}, err
+	}
+
+	res := []string{}
+	for _, r := range packages {
+		res = append(res, r.([]interface{})[0].(string))
+	}
+	return res, nil
 }
