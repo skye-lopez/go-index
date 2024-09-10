@@ -1,17 +1,17 @@
 package api
 
 import (
-	"errors"
 	"fmt"
+	"log"
 	"net/http"
-	"strings"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/syndtr/goleveldb/leveldb"
+	"github.com/skye-lopez/go-index/pg"
 )
 
 type API struct {
-	SearchDB *leveldb.DB
+	Db *pg.PG
 }
 
 var _api *API
@@ -19,14 +19,13 @@ var _api *API
 func Open() {
 	r := gin.Default()
 
-	searchDB, err := leveldb.OpenFile(".go-index-store", nil)
+	db, err := pg.NewPg()
 	if err != nil {
-		panic(err)
+		log.Fatalf("Could not open db\n%e", err)
 	}
-	defer searchDB.Close()
 
 	_api = &API{
-		SearchDB: searchDB,
+		Db: db,
 	}
 
 	r.GET("/test", func(c *gin.Context) {
@@ -35,28 +34,51 @@ func Open() {
 		})
 	})
 
-	r.GET("/search/:s", func(c *gin.Context) {
-		searchString := c.Param("s")
+	r.GET("/search/by-path", func(c *gin.Context) {
+		search := c.DefaultQuery("search", "")
+		page := c.DefaultQuery("page", "0")
+		limit := c.DefaultQuery("limit", "20")
 
-		data, status, message := _api.Search(searchString)
-		c.JSON(status, gin.H{
-			"entries": data,
-			"message": message,
+		pageInt, err := strconv.Atoi(page)
+		if err != nil {
+			errMessage := fmt.Sprintf("Error converting %s to an int. Please ensure the page= param is a valid int.", page)
+			c.JSON(400, gin.H{"message": errMessage})
+			return
+		}
+
+		limitInt, err := strconv.Atoi(limit)
+		if err != nil {
+			errMessage := fmt.Sprintf("Error converting %s to an int. Please ensure the limit= param is a valid int.", limit)
+			c.JSON(400, gin.H{"message": errMessage})
+			return
+		}
+
+		packages, err := _api.InclusiveSearch(search, pageInt, limitInt)
+		if err != nil {
+			c.JSON(500, gin.H{"message": "internal error querying data."})
+			return
+		}
+
+		c.JSON(200, gin.H{
+			"packages": packages,
+			"nextPage": pageInt + 1,
 		})
 	})
+
 	r.Run()
 }
 
-// Entries, StatusCode, Message?
-func (a *API) Search(searchString string) ([]string, int, string) {
-	fmt.Println(searchString)
-	entries, err := a.SearchDB.Get([]byte(searchString), nil)
-	if errors.Is(err, leveldb.ErrNotFound) {
-		return []string{}, 404, "No search results"
+func (a *API) InclusiveSearch(search string, page int, limit int) ([]string, error) {
+	offset := page * limit
+	query := `SELECT url FROM packages WHERE url LIKE $1 LIMIT $2 OFFSET $3`
+	packages, err := a.Db.GQ.QueryString(query,
+		"%"+search+"%",
+		limit,
+		offset,
+	)
+	res := []string{}
+	for _, r := range packages {
+		res = append(res, r.([]interface{})[0].(string))
 	}
-	if err != nil {
-		return []string{}, 500, "TODO: This other error stuff"
-	}
-	fmt.Println(string(entries))
-	return strings.Split(string(entries), "~"), 200, "OK"
+	return res, err
 }

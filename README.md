@@ -1,27 +1,47 @@
 # go-index
 A more useable go index
 
-## CLI
+TODO: A lot. This is very much under development.
 
-### update-db
-`go-index update-db`
+## API REF
 
-Upserts all index data to local leveldb(s). Keeps a `lastwrite` time in `.go-index/store` to ensure quick updates.
+### `search`
 
-#### .go-index/store
-A simple KV store that contains a list of all unique packages in the index.
+#### `search/by-path`
+An inclusive(substring) search of all packges based on their URL. This endpoint is paginated, and meant to service real time searches.
 
-`[]byte{PackagePath}=>[]byte{PackagePath}`
+##### Arguments:
 
-#### .go-index/search 
-A prefix map to provide the ability of fast searching.
+`search/by-path?search=<STRING>&page=<INT>&limit=<INT>`
+
+| query_param | required | default | type | limitations| description |
+|-------------|----------|---------|------|-------|------------|
+| `search`    | **no**  | ""       | string  |          | The substring to search urls by. |
+| `page`    | **no**  | 0       | int |    | The page to start on. **ZERO-INDEXED**|
+| `limit`    | **no**  | 20     | int | **<=2000** | Limits the amount of urls returned per page |
+
+##### Response on success:
 ```
-[]byte{Prefix}=>[]byte{DeliminitedPackages}
+{
+    entries: []string
+    nextPage: int
+}
+```
 
-Value structure:
-{PackagePath}~{PackagePath}~{PackagePath} ... 
+##### Response on error:
+```
+{
+    message: string
+}
+```
 
-Example:
+##### How pagination works:
 
-allPaths := strings.Split(value, "~")
+Pages are determined using a straightforward `offset = page*limit`. This means if you wanted to get 100 results in 2 pages you would preform the following queries:
 
+```
+GET search/by-path?search=github.com&limit=50
+=> Results 0-50
+GET search/by-path?search=github.com&limit=50&page=1
+=> Results 50-100
+```

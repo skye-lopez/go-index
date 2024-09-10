@@ -17,5 +17,5 @@ func init() {
 }
 
 func updateDB(cmd *cobra.Command, args []string) {
-	idx.SaveIndexToDB()
+	idx.Fetch()
 }

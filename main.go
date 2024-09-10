@@ -1,6 +1,9 @@
 package main
 
-import "github.com/skye-lopez/go-index/idx"
+import (
+	"github.com/joho/godotenv"
+	"github.com/skye-lopez/go-index/api"
+)
 
 /*
 func main() {
@@ -9,5 +12,6 @@ func main() {
 */
 
 func main() {
-	idx.Fetch()
+	godotenv.Load(".env")
+	api.Open()
 }

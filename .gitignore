@@ -2,3 +2,4 @@
 .go-index-search/
 .go-index-version/
 .go-index-log/
+.env
