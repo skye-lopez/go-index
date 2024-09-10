@@ -40,6 +40,10 @@ func Open() {
 		limit := c.DefaultQuery("limit", "20")
 		suffix := c.DefaultQuery("suffix", "false")
 
+		if suffix != "true" && suffix != "false" {
+			c.JSON(400, gin.H{"message": "Provided suffix option was not valid. suffix= must be either suffix=true or suffix=false."})
+		}
+
 		pageInt, err := strconv.Atoi(page)
 		if err != nil {
 			errMessage := fmt.Sprintf("Error converting %s to an int. Please ensure the page= param is a valid int.", page)
