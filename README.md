@@ -37,7 +37,7 @@ An inclusive(substring) search of all packges based on their URL. This endpoint 
 
 ##### How pagination works:
 
-Pages are determined using a straightforward `offset = page*limit`. This means if you wanted to get 100 results in 2 pages you would preform the following queries:
+Pages are determined using a straightforward `offset = page*limit`. This means if you wanted to get 100 results in 2 pages you would perform the following queries:
 
 ```
 GET search/by-path?search=github.com&limit=50
