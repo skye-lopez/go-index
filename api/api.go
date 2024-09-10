@@ -138,7 +138,7 @@ func Open() {
 
 func (a *API) InclusiveSearch(search string, page int, limit int, suffix string) ([]string, error) {
 	offset := page * limit
-	query := `SELECT url FROM packages WHERE url LIKE $1 LIMIT $2 OFFSET $3`
+	query := `SELECT url FROM packages WHERE url LIKE $1 ORDER BY url LIMIT $2 OFFSET $3`
 
 	var s string
 	if suffix == "true" {
@@ -164,7 +164,7 @@ func (a *API) InclusiveSearch(search string, page int, limit int, suffix string)
 }
 
 func (a *API) SearchByOwner(owner string, page int, limit int) ([]string, error) {
-	query := `SELECT url FROM packages WHERE owner = $1 LIMIT $2 OFFSET $3`
+	query := `SELECT url FROM packages WHERE owner = $1 ORDER BY url LIMIT $2 OFFSET $3`
 
 	offset := page * limit
 	packages, err := a.Db.GQ.QueryString(query,
