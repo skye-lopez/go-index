@@ -38,6 +38,7 @@ func Open() {
 		search := c.DefaultQuery("search", "")
 		page := c.DefaultQuery("page", "0")
 		limit := c.DefaultQuery("limit", "20")
+		suffix := c.DefaultQuery("suffix", "false")
 
 		pageInt, err := strconv.Atoi(page)
 		if err != nil {
@@ -53,7 +54,12 @@ func Open() {
 			return
 		}
 
-		packages, err := _api.InclusiveSearch(search, pageInt, limitInt)
+		if limitInt > 2000 {
+			c.JSON(400, gin.H{"message": "Provided limitInt was > 2000. Please provide a limit <= 2000"})
+			return
+		}
+
+		packages, err := _api.InclusiveSearch(search, pageInt, limitInt, suffix)
 		if err != nil {
 			c.JSON(500, gin.H{"message": "internal error querying data."})
 			return
@@ -68,11 +74,18 @@ func Open() {
 	r.Run()
 }
 
-func (a *API) InclusiveSearch(search string, page int, limit int) ([]string, error) {
+func (a *API) InclusiveSearch(search string, page int, limit int, suffix string) ([]string, error) {
 	offset := page * limit
 	query := `SELECT url FROM packages WHERE url LIKE $1 LIMIT $2 OFFSET $3`
+
+	var s string
+	if suffix == "true" {
+		s = search + "%"
+	} else {
+		s = "%" + search + "%"
+	}
 	packages, err := a.Db.GQ.QueryString(query,
-		"%"+search+"%",
+		s,
 		limit,
 		offset,
 	)
