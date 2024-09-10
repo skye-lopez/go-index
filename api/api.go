@@ -1,6 +1,8 @@
 package api
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -111,6 +113,26 @@ func Open() {
 		})
 	})
 
+	r.GET("/search/by-package", func(c *gin.Context) {
+		pkg := c.DefaultQuery("package", "")
+
+		if pkg == "" {
+			c.JSON(400, gin.H{"message": "No package= string provided. This field is required."})
+			return
+		}
+
+		p, err := _api.SearchByPackage(pkg)
+		if err != nil {
+			c.JSON(500, gin.H{"message": "internal error querying data."})
+			return
+		}
+
+		c.JSON(200, gin.H{
+			"url":      p.Owner,
+			"versions": p.Versions,
+		})
+	})
+
 	r.Run()
 }
 
@@ -159,4 +181,34 @@ func (a *API) SearchByOwner(owner string, page int, limit int) ([]string, error)
 		res = append(res, r.([]interface{})[0].(string))
 	}
 	return res, nil
+}
+
+type Version struct {
+	Version   string `json:"version"`
+	Timestamp string `json:"timestamp"`
+}
+
+type Package struct {
+	Owner    string    `json:"owner"`
+	Versions []Version `json:"versions"`
+}
+
+func (p *Package) Scan(value interface{}) error {
+	b, ok := value.([]byte)
+	if !ok {
+		return errors.New("Could not type assert query response to []byte")
+	}
+
+	return json.Unmarshal(b, &p)
+}
+
+func (a *API) SearchByPackage(pkg string) (*Package, error) {
+	resp := &Package{}
+	query := `SELECT JSONB_BUILD_OBJECT('owner', owner, 'versions', JSONB_AGG(JSONB_BUILD_OBJECT('version', version, 'timestamp', update_time))) FROM package_version WHERE owner = $1 GROUP BY owner`
+	err := a.Db.Conn.QueryRow(query, pkg).Scan(&resp)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println(resp)
+	return resp, nil
 }

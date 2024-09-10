@@ -90,3 +90,33 @@ Search all packages that belong to an `owner`. An owner is only stored if the pa
     message: string
 }
 ```
+
+#### `search/by-package`
+Get the version info for a specific package.
+
+##### Arguments:
+
+`search/by-owner?package=<STRING>`
+
+| query_param | required | default | type | limitations| description |
+|-------------|----------|---------|------|-------|------------|
+| `package`    | **yes**  |        | string  |          | the exact path the the package. ie; github.com/skye-lopez/go-index  |
+
+##### Response on success:
+```
+{
+    url: string
+    versions: [{
+        version: string, 
+        timestamp: string, (RFC3339Nano Format)
+    }, ...] 
+}
+
+```
+
+##### Response on error:
+```
+{
+    message: string
+}
+```
